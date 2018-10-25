@@ -629,8 +629,125 @@ This allows for more control over the convergence of parallel lines. For example
 \section{Field of View}
 This is the angle between the opposite edges of a perspective image. That is, if you look at the shape of the frustum, the angle between the the top/bottom of the view volume, or the left/right. The field of view can have interesting effects on the "strength" of a perspective effect (similar to the close/far viewpoint). Having a narrow angle will cause a "flattening" whereas a wider angle will cause a "deeper" perspective.
 
-\part{Lighting}
+\part{Lighting and Pipeline}
 
-\section{}
+\section{Shading Overview}
+In shading, we compute how light would be reflected/scattered from a light source, to a camera. To do this, we need:
+\begin{itemize}
+	\item Eye direction
+	\item Light direction
+	\item Normal of the surface
+	\item Properties of the surface
+\end{itemize}
+In general, how much light an area receives is proportional to the cosine of the angle between the normal of the surface, $n$ and the direction of the light $l$. So it makes sense to express with a dot product. $l \cdot n$\\ \linebreak
 
+\section{Lambertian Shading}
+Here, we assume that light is scattered equally in all directions. The resulting light is computed by the following equation:
+$$L_d = k_dImax(0, n\cdot l)$$
+where $k_d$ is some constant related to the properties of the surface, and $I$ is the intensity of the light.
+\\ \linebreak
+Each color channel is processed separately. In this sense, you could think of$k_d$ and $I$ as 3-tuples of colors, and their product would be a component-wise product.
+\\ \linebreak
+\textbf{Lambertian Shading makes a matte effect}
+
+\section{Specular Shading}
+\subsection{Phong Model}
+In the Phong model, the resulting light intensity depends on the view direction. The smaller the angle between the eye and the vector which lies at 90 degrees from the light source, the brighter the result.
+
+$$L_s = k_sImax(0, r\cdot v)^p$$
+where $k_s$ is some specular coefficient for the surface, $p$ is the shininess, $r$ is orthogonal to the light, and $v$ is the viewing direction.
+\\ \linebreak
+$r$ is computed as follows:
+$$r = n(n\cdot l) - (I - n\cot n^T)l$$
+$$ = (2nn^T - I)l$$
+The first equation comes from projecting $l$ on to $n$, then the second portion is $n$ onto $l$, taking into account the intensity, $I$. The result is a vector which mirrors initial light.
+\\ \linebreak
+The Phong model is not based on physics, and thus is prone to some anomalies. (notably when the camera is behind the light, it suddenly clamps (because of the max(0, x)).
+
+\subsection{Blinn-Phong Model}
+The Blinn-Phong model uses the half vector between $l$ and $v$ instead of the true reflection of $l$. It is thus cheaper to compute.
+$$L_s = k_sIMax(0, n\cdot h)^p$$. where $$h= \frac{v + l}{|v+l|}$$
+
+\section{Ambient Shading}
+The light which does not depend on a specific light source (ie: everything is a light source) is simply computed by:
+$$ L_a = k_aI_a$$ 
+
+\section{Lighting All Together}
+The light in any given spot is usually just the sum of the diffuse light, specular light, and ambient light. 
+$$L = L_a + L_d + L_s$$
+$$ = k_aI_a + k_dImax(0, l\cdot v) + k_sImax(0, l\cdot h)^p$$
+If we had many lights, we simply sum all of the diffuse and specular lights, adding the ambient at the end only once.
+\\ \linebreak
+
+\section{Hidden Surface Elimination}
+How can we ensure that we do not draw surfaces that are occluded by others?
+\subsection{Back Face Culling}
+You could only draw faces that are facing the camera, by going around the object counter clockwise and any face which runs downward, and only draw that. 
+\\ \linebreak
+\subsection{Painters algorithm}
+While this doesn't always work in more complex cases, we can simply draw our objects back to front, and ignore any overlaps. This works well if no objects are behind one, but also in front of another object (interleaved), and when we have information about the z coordinate of all objects (with respect to the eye).
+\subsection{Warnocks Algorithm}
+This is an algorithm which extends the Painters algorithm by subdividing the surface and applying the Painters algorithm when it can.
+\subsection{Z Buffer}
+Maintaining and sorting a Z ordering of objects is expensive. If the view changes, the entire thing must be recomputed. 
+\\ \linebreak
+The solution is to draw the objects in any random order, and just keeping track of that the closest object is. Each pixel then stores what the closest object is so far, and then, when drawing, compare the objects depth to this "closest" depth.
+\\ \linebreak
+The issue with this is that an equally spaced set of z points in the perspective is not necessarily equally spaced in the eyes point of view. (Remember how the perspective projection distorts points). Therefore we cannot simply linearly interpolate them and expect to be the same. 
+\\ \linebreak
+Things closer to the near plane can be more precise, while with things near the far plane, the unit distances in world coordinates start to become very far in eye coordinates, so we lose precision.
+
+\section{Infinite Viewing/Light}
+Since most lighting requires geometric information about the light vector, eye vector and surface normal, and the light and eye vectors constantly change, we would have to do a lot of recomputation.
+\\ \linebreak
+If we can approximate values by assuming that the eye and light are infinitely far away, we do not need to constantly recompute the lighting.
+\\ \linebreak
+
+\part{Meshes}
+\section{Definitions}
+\textit{Manifold}: Topological space that locally represents a plane. ie: can lay out a pizza onto/over it.
+\\ \linebreak
+\textit{Boundary} If an edge only belongs to one polygon\\ \linebreak
+\textit{Front face} counter clockwise ordering of edges.\\ \linebreak
+\textit{Compatible}, two faces are compatible the shared faces are in opposite order.\\ \linebreak
+\textit{Orientable} if all adjacent faces are compatible.
+\\ \linebreak
+Example of a non-orientable manifold: mobius strip.
+\\ \linebreak
+\textit{Polyhedron:} Closed orientable manifold which makes up a volume.
+\\ \linebreak
+\textit{Genus} The number of "handles" or spaces where you could cut it and still have a connected manifold.\\ \linebreak
+\textit{Euler Characteristic}: 
+$$ V - E + F + 2g + \#\delta = 2$$
+Number of vertices minus edges plus faces plus twice the genus plus the number of boundaries = 2.
+\\ \linebreak
+\textit{Topological Validity}: be manifold.
+\\ \linebreak
+\textit{Geometric Validity}: Non-self intersecting surface.\\ \linebreak
+
+\section{Representations for Triangle Meshes}
+Triangles are the easiest shape to deal with. So we generally want to break down problems into triangles (not discussed here).
+\\ \linebreak
+\subsection{Separate Triangles}
+Store each triangle completely separately. This means basically an array of 3-tuples, each holding the coordinates of a vertex.
+\\ \linebreak
+Simply, but wastes space, rounding errors can arise, and its hard to find neighbors.
+\subsection{Indexed Triangle Set}
+To get rid of duplicate vertices, we store each vertex once, and each triangle points to its 3 vertices.
+\\ \linebreak
+Much better space, and allows for finding neighbors (although a costly operation).
+\subsection{Triangle Strips}
+Since triangle meshes can be flattened out (at least locally) into strips, we can reuse two vertices for each triangle. This is even more efficient for space, and finding adjacent triangles is easier.
+\\ \linebreak
+This is done by keeping track of the newest vertex that was added. For example, if a triangle 0, 1 ,2 is added, then start the next triangle at 2, 1, 3. Then then next at 3, 1, 4 etc. 
+\subsection{Fans}
+Similar to strips, but keep track of the oldest instead of newest.
+so 0 1 2 then 0 2 3, 0 3 4 etc
+\subsection{Triangle Neighbor structure}
+Here each triangle points to its 3 neighbors, and each vertex points to only one triangle. This makes finding neighboring triangles easy, and can enumerate the triangles of a vertex.
+\subsection{Winged-edge mesh}
+More focus on edges rather than faces. Therefore works for non-triangular meshes. Here each edge points to left and right forward edges, left and right backward edges, and a left and right face. Each edge points to one face.
+\\ \linebreak
+\subsection{Half Edge Structure (MOST IMPORTANT!)}
+Each half edge points to the next (left forward), next vertex (head), one left face, and the opposite half edge (twin).
 \end{document}
